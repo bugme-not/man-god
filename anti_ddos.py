@@ -4,9 +4,10 @@ import time
 import re
 
 # --- HIGH THROUGHPUT / MULTI-USER NODE PRESET ---
-BUF_SIZE = 131072  # 128KB buffer
-MAX_CONN_PER_IP = 150  # Max connections per real client IP
-RATE_LIMIT_WINDOW = 120  # 2-minute sliding window
+BUF_SIZE = 131072         # 128KB buffer
+MAX_CONN_PER_IP = 150     # Max connections per real client IP
+RATE_LIMIT_WINDOW = 120   # 2-minute sliding window
+
 ip_connections = {}
 ip_lock = threading.Lock()
 
@@ -17,6 +18,7 @@ def check_rate_limit(ip):
             ip_connections[ip] = []
         # Keep timestamps inside the window
         ip_connections[ip] = [t for t in ip_connections[ip] if now - t < RATE_LIMIT_WINDOW]
+        
         if len(ip_connections[ip]) >= MAX_CONN_PER_IP:
             return False
         ip_connections[ip].append(now)
@@ -69,14 +71,8 @@ def bridge(src, dst):
     except Exception:
         pass
     finally:
-        try:
-            src.close()
-        except Exception:
-            pass
-        try:
-            dst.close()
-        except Exception:
-            pass
+        src.close()
+        dst.close()
 
 def handle(client, addr):
     try:
@@ -88,36 +84,34 @@ def handle(client, addr):
             return
 
         real_ip = extract_real_ip(initial_payload, addr[0])
+
         if not check_rate_limit(real_ip):
             client.sendall(b"HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n")
             client.close()
             return
 
-        # Send WebSocket upgrade response back to client/Nginx
+        # Send WebSocket upgrade response back to client
         client.sendall(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
-
+        
         # Connect to local OpenSSH service
         ssh = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         tune_socket(ssh)
         ssh.connect(('127.0.0.1', 22))
-
+        
         # Spawn bidirectional pipe
         threading.Thread(target=bridge, args=(client, ssh), daemon=True).start()
         threading.Thread(target=bridge, args=(ssh, client), daemon=True).start()
-    except Exception as e:
-        try:
-            client.sendall(b"HTTP/1.1 502 Bad Gateway\r\nConnection: close\r\n\r\n")
-        except Exception:
-            pass
+    except Exception:
         client.close()
 
 def main():
     threading.Thread(target=cleanup_stale_ips, daemon=True).start()
+
     server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    server.setsockopt(socket.SOL_SOCKET, SO_REUSEADDR := getattr(socket, 'SO_REUSEADDR', 1), 1)
     server.bind(('127.0.0.1', 2222))
     server.listen(1000)
-    print("[+] Anti-DDoS SSH Server running on 127.0.0.1:2222...")
+    
     while True:
         client, addr = server.accept()
         threading.Thread(target=handle, args=(client, addr), daemon=True).start()
