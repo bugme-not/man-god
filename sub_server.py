@@ -10,7 +10,11 @@ SECRET_TOKEN = os.getenv("SUB_TOKEN", "cxlvin777")
 
 SERVER_ADDRESS = "app-analytics-services.com"
 PORT_NUM = 443
-VLESS_PATH = "%2FCxlvinVlWS"
+
+# Endpoint Paths
+VLESS_WS_PATH = "%2FCxlvinVlWS"
+VLESS_XH_PATH = "%2FCxlvinVlXH"
+VLESS_GRPC_SERVICE = "cxlvinvl-grpc"
 
 STATIC_SSH_URI = (
     "ssh://cxlvin:cxlvin@app-analytics-services.com:443?"
@@ -30,19 +34,45 @@ async def handle_subscription(request: web.Request) -> web.Response:
 
     run_app_host = request.headers.get("X-Forwarded-Host") or request.host
 
-    vless_uri = (
+    # 1. VLESS WebSocket
+    vless_ws_uri = (
         f"vless://cxlvin777@{SERVER_ADDRESS}:{PORT_NUM}"
         f"?encryption=none&type=ws"
         f"&host={run_app_host}"
-        f"&headerType=none&path={VLESS_PATH}&security=tls#CXLVIN-VLESS-WS"
+        f"&headerType=none&path={VLESS_WS_PATH}&security=tls#CXLVIN-VLESS-WS"
     )
 
-    full_text_output = f"{vless_uri}\n\n{STATIC_SSH_URI}\n"
+    # 2. VLESS xHTTP
+    vless_xh_uri = (
+        f"vless://cxlvin777@{SERVER_ADDRESS}:{PORT_NUM}"
+        f"?encryption=none&type=xhttp"
+        f"&host={run_app_host}"
+        f"&path={VLESS_XH_PATH}&mode=auto&security=tls#CXLVIN-VLESS-xHTTP"
+    )
 
-    encoded_payload = base64.b64encode(f"{vless_uri}\n{STATIC_SSH_URI}\n".encode("utf-8")).decode("utf-8")
+    # 3. VLESS gRPC (With mode=gun, Chrome FP, and dynamic authority parameter)
+    vless_grpc_uri = (
+        f"vless://cxlvin777@{SERVER_ADDRESS}:{PORT_NUM}"
+        f"?mode=gun&security=tls&alpn=h2%2Chttp%2F1.1&encryption=none"
+        f"&insecure=0&fp=chrome&type=grpc&serviceName={VLESS_GRPC_SERVICE}"
+        f"&allowInsecure=0&sni={SERVER_ADDRESS}&authority={run_app_host}#vless-grpc"
+    )
+
+    full_text_output = (
+        f"{vless_ws_uri}\n\n"
+        f"{vless_xh_uri}\n\n"
+        f"{vless_grpc_uri}\n\n"
+        f"{STATIC_SSH_URI}\n"
+    )
+
+    combined_lines = f"{vless_ws_uri}\n{vless_xh_uri}\n{vless_grpc_uri}\n{STATIC_SSH_URI}\n"
+    encoded_payload = base64.b64encode(combined_lines.encode("utf-8")).decode("utf-8")
 
     user_agent = request.headers.get("User-Agent", "").lower()
-    is_v2ray_client = any(client in user_agent for client in ["v2ray", "nekobox", "shadowrocket", "v2rayng", "clash"])
+    is_v2ray_client = any(
+        client in user_agent 
+        for client in ["v2ray", "nekobox", "shadowrocket", "v2rayng", "clash", "sing-box"]
+    )
 
     if is_v2ray_client:
         return web.Response(
