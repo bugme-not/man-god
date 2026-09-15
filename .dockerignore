@@ -1,0 +1,24 @@
+# Version control
+.git
+.gitignore
+
+# Environment & secrets
+.env
+*.env
+*.pem
+*.key
+
+# Local test logs, databases, & cache
+*.log
+*.db
+*.sqlite
+__pycache__
+*.pyc
+
+# OS generated files
+.DS_Store
+Thumbs.db
+
+# Markdown & documentation
+*.md
+LICENSE
