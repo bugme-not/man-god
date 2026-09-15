@@ -2,6 +2,17 @@
   "log": {
     "loglevel": "none"
   },
+  "dns": {
+    "servers": [
+      {
+        "address": "https://1.1.1.1/dns-query",
+        "skipFallback": true
+      },
+      "8.8.8.8"
+    ],
+    "queryStrategy": "UseIPv4",
+    "cacheStrategy": "Enabled"
+  },
   "inbounds": [
     {
       "port": 10085,
@@ -57,7 +68,7 @@
     }
   ],
   "routing": {
-    "domainStrategy": "AsIs",
+    "domainStrategy": "IPIfNonMatch",
     "rules": [
       {
         "type": "field",
