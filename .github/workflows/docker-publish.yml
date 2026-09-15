@@ -35,7 +35,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ima0hw/chibib:latest
-            ima0hw/chibib:${{ github.sha }}
+            ima0hw/chiib:latest
+            ima0hw/chiib:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
