@@ -35,7 +35,7 @@ jobs:
           platforms: linux/amd64
           push: true
           tags: |
-            ima0hw/pos:latest
-            ima0hw/pos:${{ github.sha }}
+            ima0hw/man-g0d:latest
+            ima0hw/man-g0d:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
