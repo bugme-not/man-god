@@ -19,9 +19,8 @@ RUN wget --no-check-certificate -O /tmp/openssh.tar.gz https://cdn.openbsd.org/p
     && make install \
     && rm -rf /tmp/openssh*
 
-# Direct Xray Core installation
-RUN XRAY_VER=$(curl -s https://api.github.com/repos/XTLS/Xray-core/releases/latest | grep '"tag_name":' | sed -E 's/.*"([^"]+)".*/\1/') \
-    && wget -O /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/download/${XRAY_VER}/Xray-linux-64.zip" \
+# Direct Xray Core installation using direct latest asset redirect
+RUN wget -O /tmp/xray.zip "https://github.com/XTLS/Xray-core/releases/latest/download/Xray-linux-64.zip" \
     && unzip /tmp/xray.zip -d /usr/local/bin/ \
     && chmod +x /usr/local/bin/xray \
     && mkdir -p /usr/local/etc/xray \
