@@ -1,7 +1,7 @@
 FROM ubuntu:24.04
 ENV DEBIAN_FRONTEND=noninteractive
 
-# Added python3-aiohttp for sub_server.py
+# Install dependencies including python3-aiohttp for sub_server
 RUN apt-get update && apt-get install -y \
     build-essential libssl-dev zlib1g-dev libpam0g-dev libselinux1-dev \
     nginx python3 python3-aiohttp cmake git wget curl ca-certificates unzip supervisor \
@@ -52,15 +52,20 @@ RUN { \
 COPY banner.txt /etc/ssh/banner.txt
 RUN echo "Banner /etc/ssh/banner.txt" >> /etc/ssh/sshd_config
 
+# Copy configurations and script files
 COPY xray_config.json /usr/local/etc/xray/config.json
 COPY nginx.conf /etc/nginx/nginx.conf
 COPY supervisord.conf /etc/supervisor/supervisord.conf
 COPY anti_ddos.py /usr/local/bin/anti_ddos.py
 COPY sub_server.py /usr/local/bin/sub_server.py
+COPY log_cleaner.py /usr/local/bin/log_cleaner.py
 COPY entrypoint.sh /entrypoint.sh
 
 # Make scripts executable
-RUN chmod +x /entrypoint.sh /usr/local/bin/anti_ddos.py /usr/local/bin/sub_server.py
+RUN chmod +x /entrypoint.sh \
+    /usr/local/bin/anti_ddos.py \
+    /usr/local/bin/sub_server.py \
+    /usr/local/bin/log_cleaner.py
 
 EXPOSE 8080
 ENTRYPOINT ["/entrypoint.sh"]
