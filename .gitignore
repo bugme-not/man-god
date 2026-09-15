@@ -1,0 +1,30 @@
+# Byte-compiled / Python artifacts
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Local environment & secrets
+.env
+*.env
+*.pem
+*.key
+*.crt
+
+# Local SSH Host Keys & log outputs
+ssh_host_*
+*.log
+
+# Databases & ephemeral files
+/tmp/
+*.db
+*.sqlite
+
+# Docker & build context archives
+.docker/
+*.tar
+*.gz
+*.zip
+
+# OS metadata
+.DS_Store
+Thumbs.db
