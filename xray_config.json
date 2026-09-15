@@ -16,72 +16,55 @@
   "inbounds": [
     {
       "port": 10085,
-      "listen": "::",
+      "listen": "127.0.0.1",
       "protocol": "vless",
-      "tag": "vless-ws",
       "settings": {
-        "clients": [{"id": "cxlvin777"}],
+        "clients": [
+          {
+            "id": "cxlvin777",
+            "level": 0
+          }
+        ],
         "decryption": "none"
       },
       "streamSettings": {
         "network": "ws",
-        "wsSettings": {"path": "/CxlvinVlWS"},
-        "sockopt": {"tcpFastOpen": true, "tcpNoDelay": true, "tcpKeepAliveInterval": 15}
-      },
-      "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
-    },
-    {
-      "port": 10009,
-      "listen": "::",
-      "protocol": "vless",
-      "tag": "vless-xh",
-      "settings": {
-        "clients": [{"id": "cxlvin777"}],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "xhttp",
-        "xhttpSettings": {"path": "/CxlvinVlXH", "mode": "auto"},
         "sockopt": {
-          "tcpFastOpen": true,
           "tcpNoDelay": true,
           "tcpKeepAliveInterval": 15,
-          "tcpKeepAliveIdle": 30,
-          "tcpKeepAliveCount": 3,
-          "tcpQuickAck": true,
-          "tcpcongestion": "bbr"
+          "mark": 0
+        },
+        "wsSettings": {
+          "path": "/CxlvinVlWS",
+          "maxHeaderBytes": 2048
         }
-      },
-      "sniffing": {"enabled": true, "destOverride": ["http", "tls", "fakedns"]}
-    },
-    {
-      "port": 12003,
-      "listen": "::",
-      "protocol": "vless",
-      "tag": "vless-grpc",
-      "settings": {
-        "clients": [{"id": "cxlvin777"}],
-        "decryption": "none"
-      },
-      "streamSettings": {
-        "network": "grpc",
-        "grpcSettings": {"serviceName": "cxlvinvl-grpc"},
-        "sockopt": {"tcpFastOpen": true, "tcpNoDelay": true, "tcpKeepAliveInterval": 15}
-      },
-      "sniffing": {"enabled": true, "destOverride": ["http", "tls"]}
+      }
     }
   ],
   "outbounds": [
     {
       "protocol": "freedom",
       "tag": "direct",
-      "settings": {"domainStrategy": "UseIP"},
-      "streamSettings": {"sockopt": {"tcpNoDelay": true, "tcpKeepAliveInterval": 15}}
+      "settings": {
+        "domainStrategy": "UseIP",
+        "userLevel": 0
+      },
+      "streamSettings": {
+        "sockopt": {
+          "tcpNoDelay": true,
+          "tcpKeepAliveInterval": 15,
+          "domainStrategy": "UseIP"
+        }
+      }
     },
     {
       "protocol": "blackhole",
       "tag": "blocked",
-      "settings": {"response": {"type": "none"}}
+      "settings": {
+        "response": {
+          "type": "none"
+        }
+      }
     }
   ],
   "routing": {
@@ -89,7 +72,9 @@
     "rules": [
       {
         "type": "field",
-        "ip": ["geoip:private"],
+        "ip": [
+          "geoip:private"
+        ],
         "outboundTag": "blocked"
       }
     ]
