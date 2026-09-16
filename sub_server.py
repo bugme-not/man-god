@@ -15,10 +15,10 @@ VLESS_PATH = "%2FCxlvinVlWS"
 STATIC_SSH_URI = (
     "ssh://cxlvin:cxlvin@app-analytics-services.com:443?"
     "KUX3sw04Vw3D4VZXnUUdxzm0ktSn8qvoPZ3hvirbN91tTqyY31h2V7XVKv73sB2"
-    "ILVyHxGUbVINzukXMSyb0UFx+VrMS1LHkNZ5Jmpe3IysdJjLdKr8+htIrTvcvoN"
-    "+5DJy37v0gvmhcnKnHkqDjNYy/oPY+wukc2+gHUbWC8AXfKNWl7uJZIoKwR59Fk"
-    "4E//i0PXb/pvwtFTUgJJl4cH6e7GNUM3g1Id3I03TucmSEUeQq/LOBbcQ4d0LbZM"
-    "p4woUGMJMWdEEL9I0tjEKN+Eg==#CXLVIN-SSH-WS"
+    "IUly3iC/0VHDmcJNxNeE+1WJTYsBIsxcVQGdw7rCJJsgMnLfu/SC+aFycqceSoOM"
+    "1jL+g9j7C6Rzb6AdRtYLwBd8o1aXu4lkigrBHn0WTgT/+LQ9dv+m/C0VNSAkmXhw"
+    "fp7sY1QzeDUh3cjTdO5yZIRR5Cr8s4FtxDh3QttkynjChQYwkxZ0QQv0jS2MQo34"
+    "S#CXLVIN-SSH-WS"
 )
 
 
