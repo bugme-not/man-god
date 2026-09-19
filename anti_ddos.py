@@ -1,120 +1,177 @@
+import asyncio
+import collections
 import socket
-import threading
+import struct
 import time
-import re
+import os
+import sys
 
-# --- HIGH THROUGHPUT / MULTI-USER NODE PRESET ---
-BUF_SIZE = 131072         # 128KB buffer
-MAX_CONN_PER_IP = 150     # Max connections per real client IP
-RATE_LIMIT_WINDOW = 120   # 2-minute sliding window
+try:
+    import uvloop
+    uvloop.install()
+except ImportError:
+    pass
 
-ip_connections = {}
-ip_lock = threading.Lock()
+MAX_CONN_PER_IP = 150       
+RATE_LIMIT_WINDOW = 5       
+MAX_REQ_PER_WINDOW = 200    
+BAN_TIME = 600              
+IPSET_NAME = "antiddos_blacklist"
+LOOP_INTERVAL = 0.5         
 
-def check_rate_limit(ip):
-    now = time.time()
-    with ip_lock:
-        if ip not in ip_connections:
-            ip_connections[ip] = []
-        # Keep timestamps inside the window
-        ip_connections[ip] = [t for t in ip_connections[ip] if now - t < RATE_LIMIT_WINDOW]
-        
-        if len(ip_connections[ip]) >= MAX_CONN_PER_IP:
-            return False
-        ip_connections[ip].append(now)
-        return True
+banned_ips = {}  
+ip_history = collections.defaultdict(lambda: collections.deque(maxlen=MAX_REQ_PER_WINDOW + 10))
 
-def cleanup_stale_ips():
-    """Background garbage collector to purge idle IP memory every 5 minutes."""
-    while True:
-        time.sleep(300)
-        now = time.time()
-        with ip_lock:
-            empty_ips = [
-                ip for ip, timestamps in ip_connections.items()
-                if not [t for t in timestamps if now - t < RATE_LIMIT_WINDOW]
-            ]
-            for ip in empty_ips:
-                del ip_connections[ip]
+IPV4_PACK = struct.Struct("<I")
+IPV6_PACK = struct.Struct("<4I")
 
-def extract_real_ip(header_bytes, fallback_ip):
-    """Extract real client IP from X-Forwarded-For or X-Real-IP headers."""
+ipset_proc = None
+
+def log(msg: str) -> None:
+    print(f"[Anti-DDoS Engine] {time.strftime('%Y-%m-%d %H:%M:%S')} - {msg}", flush=True)
+
+def parse_hex_ip_fast(hex_str: str) -> str:
     try:
-        header_text = header_bytes.decode('utf-8', errors='ignore')
-        # Check X-Forwarded-For
-        match = re.search(r'X-Forwarded-For:\s*([^\r\n,]+)', header_text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-        # Check X-Real-IP
-        match = re.search(r'X-Real-IP:\s*([^\r\n]+)', header_text, re.IGNORECASE)
-        if match:
-            return match.group(1).strip()
-    except Exception:
+        length = len(hex_str)
+        if length == 8:
+            addr_int = int(hex_str, 16)
+            return socket.inet_ntop(socket.AF_INET, IPV4_PACK.pack(addr_int))
+        elif length == 32:
+            words = (
+                int(hex_str[0:8], 16),
+                int(hex_str[8:16], 16),
+                int(hex_str[16:24], 16),
+                int(hex_str[24:32], 16)
+            )
+            return socket.inet_ntop(socket.AF_INET6, IPV6_PACK.pack(*words))
+    except (ValueError, OSError):
         pass
-    return fallback_ip
+    return ""
 
-def tune_socket(sock):
-    sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-    try:
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 1 << 20)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_SNDBUF, 1 << 20)
-    except OSError:
-        pass
-
-def bridge(src, dst):
-    try:
-        while True:
-            data = src.recv(BUF_SIZE)
-            if not data:
-                break
-            dst.sendall(data)
-    except Exception:
-        pass
-    finally:
-        src.close()
-        dst.close()
-
-def handle(client, addr):
-    try:
-        tune_socket(client)
-        # Peek at initial HTTP header to parse real IP
-        initial_payload = client.recv(4096)
-        if not initial_payload:
-            client.close()
-            return
-
-        real_ip = extract_real_ip(initial_payload, addr[0])
-
-        if not check_rate_limit(real_ip):
-            client.sendall(b"HTTP/1.1 429 Too Many Requests\r\nConnection: close\r\n\r\n")
-            client.close()
-            return
-
-        # Send WebSocket upgrade response back to client
-        client.sendall(b"HTTP/1.1 101 Switching Protocols\r\nUpgrade: websocket\r\nConnection: Upgrade\r\n\r\n")
-        
-        # Connect to local OpenSSH service
-        ssh = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        tune_socket(ssh)
-        ssh.connect(('127.0.0.1', 22))
-        
-        # Spawn bidirectional pipe
-        threading.Thread(target=bridge, args=(client, ssh), daemon=True).start()
-        threading.Thread(target=bridge, args=(ssh, client), daemon=True).start()
-    except Exception:
-        client.close()
-
-def main():
-    threading.Thread(target=cleanup_stale_ips, daemon=True).start()
-
-    server = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-    server.setsockopt(socket.SOL_SOCKET, SO_REUSEADDR := getattr(socket, 'SO_REUSEADDR', 1), 1)
-    server.bind(('127.0.0.1', 2222))
-    server.listen(1000)
+def read_proc_sockets_fast():
+    remote_ips = []
     
+    for path in ("/proc/net/tcp", "/proc/net/tcp6"):
+        if not os.path.exists(path):
+            continue
+            
+        with open(path, "rb") as f:
+            f.readline()
+            for line in f:
+                parts = line.split()
+                if len(parts) < 4:
+                    continue
+                
+                state = parts[3]
+                if state != b"01" and state != b"02":
+                    continue
+                
+                rem_addr = parts[2]
+                colon_pos = rem_addr.find(b":")
+                if colon_pos == -1:
+                    continue
+                
+                hex_ip = rem_addr[:colon_pos].decode("ascii")
+                ip = parse_hex_ip_fast(hex_ip)
+                
+                if ip and not (ip.startswith("127.") or ip == "::1" or ip == "0.0.0.0"):
+                    remote_ips.append(ip)
+                    
+    return remote_ips
+
+async def exec_cmd(*args) -> bool:
+    proc = await asyncio.create_subprocess_exec(
+        *args, stdout=asyncio.subprocess.DEVNULL, stderr=asyncio.subprocess.DEVNULL
+    )
+    await proc.wait()
+    return proc.returncode == 0
+
+async def setup_firewall():
+    global ipset_proc
+    log("Initializing kernel ipset rules...")
+    await exec_cmd("ipset", "create", IPSET_NAME, "hash:ip", "timeout", str(BAN_TIME), "-exist")
+    await exec_cmd("iptables", "-I", "INPUT", "-m", "set", "--match-set", IPSET_NAME, "src", "-j", "DROP")
+    
+    ipset_proc = await asyncio.create_subprocess_exec(
+        "ipset", "restore",
+        stdin=asyncio.subprocess.PIPE,
+        stdout=asyncio.subprocess.DEVNULL,
+        stderr=asyncio.subprocess.DEVNULL
+    )
+
+async def ban_ips_batch(ips: list):
+    if not ips or not ipset_proc or ipset_proc.stdin.is_closing():
+        return
+
+    now = time.time()
+    commands = []
+    
+    for ip in ips:
+        if ip in banned_ips:
+            continue
+        banned_ips[ip] = now + BAN_TIME
+        commands.append(f"add {IPSET_NAME} {ip} timeout {BAN_TIME} -exist\n")
+        log(f"ALERT: Ban applied to {ip} (Kernel ipset)")
+        
+    if commands:
+        payload = "".encode("utf-8").join(c.encode("utf-8") for c in commands)
+        ipset_proc.stdin.write(payload)
+        await ipset_proc.stdin.drain()
+
+async def prune_expired_bans():
+    now = time.time()
+    expired = [ip for ip, exp_time in banned_ips.items() if now >= exp_time]
+    for ip in expired:
+        del banned_ips[ip]
+        ip_history.pop(ip, None)
+
+async def inspect_connections():
+    now = time.time()
+    remote_ips = await asyncio.to_thread(read_proc_sockets_fast)
+    
+    active_counts = collections.defaultdict(int)
+    ips_to_ban = set()
+
+    for ip in remote_ips:
+        if ip in banned_ips:
+            continue
+
+        active_counts[ip] += 1
+        history = ip_history[ip]
+        history.append(now)
+
+        if active_counts[ip] > MAX_CONN_PER_IP:
+            log(f"EXCEEDED CONCURRENCY: {ip} ({active_counts[ip]} active sockets)")
+            ips_to_ban.add(ip)
+            continue
+
+        while history and now - history[0] > RATE_LIMIT_WINDOW:
+            history.popleft()
+
+        if len(history) > MAX_REQ_PER_WINDOW:
+            log(f"RATE LIMIT EXCEEDED: {ip} ({len(history)} reqs/{RATE_LIMIT_WINDOW}s)")
+            ips_to_ban.add(ip)
+
+    if ips_to_ban:
+        await ban_ips_batch(list(ips_to_ban))
+
+async def main():
+    await setup_firewall()
+    log("Engine started. Real-time C-level kernel socket inspection active...")
+
     while True:
-        client, addr = server.accept()
-        threading.Thread(target=handle, args=(client, addr), daemon=True).start()
+        try:
+            await inspect_connections()
+            await prune_expired_bans()
+        except Exception as e:
+            log(f"Error inside engine loop: {e}")
+            
+        await asyncio.sleep(LOOP_INTERVAL)
 
 if __name__ == "__main__":
-    main()
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        if ipset_proc:
+            ipset_proc.terminate()
+        log("Shutting down engine...")
